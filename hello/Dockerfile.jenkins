@@ -1,0 +1,11 @@
+FROM jenkins/jenkins:lts
+
+# ลง plugin ที่จำเป็นทั้งหมด
+RUN jenkins-plugin-cli --plugins \
+    workflow-aggregator \
+    pipeline-stage-view \
+    git \
+    github \
+    docker-workflow \
+    ssh-agent \
+    timestamper

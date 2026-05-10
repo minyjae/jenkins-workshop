@@ -1,0 +1,108 @@
+pipeline {
+    agent any
+
+    environment {
+        APP_NAME     = 'hello-nextjs'
+        DOCKER_REG   = 'minyjae01'
+        DOCKER_IMAGE = "${DOCKER_REG}/${APP_NAME}"
+        SERVER_USER  = 'ubuntu'
+    }
+
+    options {
+        timeout(time: 15, unit: 'MINUTES')
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+    }
+
+    stages {
+        // ── 1. ดึงโค้ดจาก Git ──
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'echo "Commit: $(git rev-parse --short HEAD)"'
+            }
+        }
+
+        // ── 2. Lint + Build Next.js (รันใน container เดียวกัน) ──
+        stage('Lint & Build') {
+            agent {
+                docker {
+                    image 'node:20-alpine'
+                    reuseNode true   // ใช้ workspace เดิม ไม่ต้อง checkout ซ้ำ
+                }
+            }
+            steps {
+                sh 'npm ci'          // ติดตั้ง dependencies ครั้งเดียว
+                sh 'npm run lint'    // ตรวจสอบโค้ด
+                sh 'npm run build'   // build Next.js
+            }
+        }
+
+        // ── 3. สร้าง Docker Image ──
+        stage('Docker Build') {
+            steps {
+                script {
+                    env.IMAGE_TAG = "${BUILD_NUMBER}-${sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}"
+                }
+                sh "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} -t ${DOCKER_IMAGE}:latest ."
+            }
+        }
+
+        // ── 4. Push ขึ้น Docker Registry ──
+        stage('Docker Push') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-registry-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+                        docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+                        docker push ${DOCKER_IMAGE}:latest
+                    """
+                }
+            }
+        }
+
+        // ── 5. Deploy ขึ้น Server (เฉพาะ branch main) ──
+        stage('Deploy') {
+            when { branch 'main' }
+            steps {
+                sshagent(['server-ssh-key']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${SERVER_USER}@${SERVER_IP} '
+                            docker pull ${DOCKER_IMAGE}:${IMAGE_TAG}
+
+                            docker stop ${APP_NAME} || true
+                            docker rm   ${APP_NAME} || true
+
+                            docker run -d \
+                                --name ${APP_NAME} \
+                                --restart unless-stopped \
+                                -p 3000:3000 \
+                                ${DOCKER_IMAGE}:${IMAGE_TAG}
+
+                            sleep 5
+                            curl -sf http://localhost:3000 || exit 1
+                        '
+                    """
+                }
+                echo "Deployed: http://${SERVER_IP}:3000"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Build #${BUILD_NUMBER} succeeded!"
+        }
+        failure {
+            echo "Build #${BUILD_NUMBER} failed!"
+        }
+        always {
+            sh "docker rmi ${DOCKER_IMAGE}:${IMAGE_TAG} || true"
+            cleanWs()
+        }
+    }
+}
