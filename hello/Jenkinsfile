@@ -5,7 +5,6 @@ pipeline {
         APP_NAME     = 'hello-nextjs'
         DOCKER_REG   = 'minyjae01'
         DOCKER_IMAGE = "${DOCKER_REG}/${APP_NAME}"
-        SERVER_USER  = 'ubuntu'
     }
 
     options {
@@ -62,33 +61,6 @@ pipeline {
                         docker push ${DOCKER_IMAGE}:latest
                     """
                 }
-            }
-        }
-
-        // ── 5. Deploy ขึ้น Server (เฉพาะ branch main) ──
-        stage('Deploy') {
-            when { branch 'main' }
-            steps {
-                sshagent(['server-ssh-key']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ${SERVER_USER}@${SERVER_IP} '
-                            docker pull ${DOCKER_IMAGE}:${IMAGE_TAG}
-
-                            docker stop ${APP_NAME} || true
-                            docker rm   ${APP_NAME} || true
-
-                            docker run -d \
-                                --name ${APP_NAME} \
-                                --restart unless-stopped \
-                                -p 3000:3000 \
-                                ${DOCKER_IMAGE}:${IMAGE_TAG}
-
-                            sleep 5
-                            curl -sf http://localhost:3000 || exit 1
-                        '
-                    """
-                }
-                echo "Deployed: http://${SERVER_IP}:3000"
             }
         }
     }
