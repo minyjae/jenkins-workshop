@@ -33,18 +33,15 @@ pipeline {
                 }
             }
             steps {
-                dir('hello') {
                     sh 'npm ci'          // ติดตั้ง dependencies ครั้งเดียว
                     sh 'npm run lint'    // ตรวจสอบโค้ด
                     sh 'npm run build'   // build Next.js
-                }
             }
         }
 
         // ── 3. สร้าง Docker Image ──
         stage('Docker Build') {
             steps {
-                dir('hello') {
                     script {
                         env.IMAGE_TAG = "${BUILD_NUMBER}-${sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}"
                     }
@@ -55,7 +52,6 @@ pipeline {
                             -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
                             -t ${DOCKER_IMAGE}:latest .
                         """
-                }
             }
         }
 
