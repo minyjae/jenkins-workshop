@@ -23,19 +23,51 @@ pipeline {
             }
         }
 
-        // ── 2. Lint + Build Next.js (รันใน container เดียวกัน) ──
-        stage('Lint & Build') {
+        // ── 2. Install Dependencies ──
+        stage('Install') {
             agent {
                 docker {
                     image 'node:20-alpine'
-                    reuseNode true   // ใช้ workspace เดิม ไม่ต้อง checkout ซ้ำ
+                    reuseNode true
                     args '-v npm-cache:/root/.npm'
                 }
             }
             steps {
-                    sh 'npm ci'          // ติดตั้ง dependencies ครั้งเดียว
-                    sh 'npm run lint'    // ตรวจสอบโค้ด
-                    sh 'npm run build'   // build Next.js
+                dir('hello') {
+                    sh 'npm ci'
+                }
+            }
+        }
+
+        // ── 3. Lint ──
+        stage('Lint') {
+            agent {
+                docker {
+                    image 'node:20-alpine'
+                    reuseNode true
+                    args '-v npm-cache:/root/.npm'
+                }
+            }
+            steps {
+                dir('hello') {
+                    sh 'npm run lint'  // ใช้ node_modules จาก workspace เดิม
+                }
+            }
+        }
+
+        // ── 4. Build Next.js ──
+        stage('Build') {
+            agent {
+                docker {
+                    image 'node:20-alpine'
+                    reuseNode true
+                    args '-v npm-cache:/root/.npm'
+                }
+            }
+            steps {
+                dir('hello') {
+                    sh 'npm run build'  // ใช้ node_modules จาก workspace เดิม
+                }
             }
         }
 
