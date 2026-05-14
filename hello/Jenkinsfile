@@ -50,6 +50,7 @@ pipeline {
                     }
                     sh """
                             docker build \
+                            -f Dockerfile.app \
                             --cache-from ${DOCKER_IMAGE}:latest \
                             -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
                             -t ${DOCKER_IMAGE}:latest .
